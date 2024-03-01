@@ -34,8 +34,11 @@ from .registry import Placeholder, Registry
 from .util import construct_union_class_name, evaluate_forward_ref
 
 PYTHON10 = sys.version_info >= (3, 10)
+PYTHON9 = sys.version_info >= (3, 9)
 if PYTHON10:
     from types import UnionType
+if PYTHON9:
+    from typing import Annotated
 
 GRAPHENE2 = graphene.VERSION[0] < 3
 
@@ -234,8 +237,16 @@ def find_graphene_type(
     elif type_ in (tuple, list, set):
         # TODO: do Sets really belong here?
         return List
+    if PYTHON9 and get_origin(type_) is Annotated:
+        return find_graphene_type(type_.__origin__, field, registry, parent_type, model)
     elif registry and registry.get_type_for_model(type_):
         return registry.get_type_for_model(type_)
+    # NOTE: this has to come before any `issubclass()` checks, because annotated
+    # generic types aren't valid arguments to `issubclass`
+    elif hasattr(type_, "__origin__"):
+        return convert_generic_python_type(
+            type_, field, registry, parent_type=parent_type, model=model
+        )
     elif registry and (
         isinstance(type_, BaseModel)
         or (inspect.isclass(type_) and issubclass(type_, BaseModel))
@@ -245,12 +256,6 @@ def find_graphene_type(
         # be called to update it.
         registry.add_placeholder_for_model(type_)
         return registry.get_type_for_model(type_)
-    # NOTE: this has to come before any `issubclass()` checks, because annotated
-    # generic types aren't valid arguments to `issubclass`
-    elif hasattr(type_, "__origin__"):
-        return convert_generic_python_type(
-            type_, field, registry, parent_type=parent_type, model=model
-        )
     elif isinstance(type_, T.ForwardRef):
         # A special case! We have to do a little hackery to try and resolve
         # the type that this points to, by trying to reference a "sibling" type
@@ -304,7 +309,7 @@ def convert_generic_python_type(
     registry: Registry,
     parent_type: T.Type = None,
     model: T.Type[BaseModel] = None,
-) -> T.Union[Type[T.Union[BaseType, List]], Placeholder]:  # noqa: C901
+) -> T.Union[Type[T.Union[BaseType, List]], Placeholder]:
     """
     Convert annotated Python generic types into the most appropriate Graphene
     Field type -- e.g., turn `typing.Union` into a Graphene Union.
