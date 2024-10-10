@@ -153,12 +153,20 @@ def test_decimal(monkeypatch):
 def test_iterables():
     field = _convert_field_from_spec("attr", (T.List[int], [1, 2]))
     assert isinstance(field.type.of_type, graphene.types.List)
+    assert isinstance(field.type.of_type.of_type, graphene.types.NonNull)
+    assert field.type.of_type.of_type.of_type == graphene.types.Int
+
+    field = _convert_field_from_spec("attr", (T.List[T.Union[int, None]], [1, 2]))
+    assert isinstance(field.type.of_type, graphene.types.List)
+    assert field.type.of_type.of_type == graphene.types.Int
 
     field = _convert_field_from_spec("attr", (list, [1, 2]))
     assert field.type.of_type == graphene.types.List
 
     field = _convert_field_from_spec("attr", (T.Set[int], {1, 2}))
     assert isinstance(field.type.of_type, graphene.types.List)
+    assert isinstance(field.type.of_type.of_type, graphene.types.NonNull)
+    assert field.type.of_type.of_type.of_type == graphene.types.Int
 
     field = _convert_field_from_spec("attr", (set, {1, 2}))
     assert field.type.of_type == graphene.types.List
@@ -168,6 +176,8 @@ def test_iterables():
 
     field = _convert_field_from_spec("attr", (T.Tuple[int, ...], (1, 2.2)))
     assert isinstance(field.type.of_type, graphene.types.List)
+    assert isinstance(field.type.of_type.of_type, graphene.types.NonNull)
+    assert field.type.of_type.of_type.of_type == graphene.types.Int
 
     field = _convert_field_from_spec("attr", (tuple, (1, 2)))
     assert field.type.of_type == graphene.types.List

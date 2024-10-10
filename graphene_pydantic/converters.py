@@ -28,14 +28,18 @@ from graphene.types.base import BaseType
 from graphene.types.datetime import Date, DateTime, Time
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from pydantic_core import PydanticUndefined
 from pydantic.networks import EmailStr
+from pydantic_core import PydanticUndefined
 
 from .registry import Placeholder, Registry
-from .util import construct_union_class_name, evaluate_forward_ref
+from .util import (
+    construct_union_class_name,
+    evaluate_forward_ref,
+    is_union_type,
+    PYTHON10,
+    PYTHON9,
+)
 
-PYTHON10 = sys.version_info >= (3, 10)
-PYTHON9 = sys.version_info >= (3, 9)
 if PYTHON10:
     from types import UnionType
 if PYTHON9:
@@ -122,16 +126,8 @@ def convert_pydantic_field(
     """
     declared_type = getattr(field, "annotation", None)
 
-    # Convert Python 10 UnionType to T.Union
-    if PYTHON10:
-        is_union_type = (
-            get_origin(declared_type) is T.Union
-            or get_origin(declared_type) is UnionType
-        )
-    else:
-        is_union_type = get_origin(declared_type) is T.Union
-
-    if is_union_type:
+    is_union = is_union_type(declared_type)
+    if is_union:
         declared_type = T.Union[declared_type.__args__]
 
     field_kwargs.setdefault(
@@ -146,7 +142,7 @@ def convert_pydantic_field(
         or (
             type(field.default) is not PydanticUndefined
             and getattr(declared_type, "_name", "") != "Optional"
-            and not is_union_type
+            and not is_union
         ),
     )
     field_kwargs.setdefault(
@@ -310,7 +306,7 @@ def convert_generic_python_type(
     registry: Registry,
     parent_type: T.Type = None,
     model: T.Type[BaseModel] = None,
-) -> T.Union[Type[T.Union[BaseType, List]], Placeholder]:
+) -> T.Union[Type[T.Union[BaseType, List]], List, Placeholder]:
     """
     Convert annotated Python generic types into the most appropriate Graphene
     Field type -- e.g., turn `typing.Union` into a Graphene Union.
@@ -348,10 +344,14 @@ def convert_generic_python_type(
         # Of course, we can only return a homogeneous type here, so we pick the
         # first of the wrapped types
         inner_type = inner_types[0]
+        inner_gql_type = find_graphene_type(
+            inner_types[0], field, registry, parent_type=parent_type, model=model
+        )
+        is_required = not (
+            is_union_type(inner_type) and NONE_TYPE in inner_type.__args__
+        )
         return List(
-            find_graphene_type(
-                inner_type, field, registry, parent_type=parent_type, model=model
-            )
+            graphene.NonNull(inner_gql_type) if is_required else inner_gql_type,
         )
     elif origin in (T.Dict, T.Mapping, collections.OrderedDict, dict) or issubclass(
         origin, collections.abc.Mapping

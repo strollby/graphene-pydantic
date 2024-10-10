@@ -1,10 +1,11 @@
 import sys
 import typing as T
-from typing import (
-    Any,
-    ForwardRef,
-    cast,
-)  # type: ignore
+from typing import Any, ForwardRef, cast, get_origin, Type  # type: ignore
+
+PYTHON10 = sys.version_info >= (3, 10)
+PYTHON9 = sys.version_info >= (3, 9)
+if PYTHON10:
+    from types import UnionType
 
 
 def construct_union_class_name(inner_types: T.Sequence[T.Type]) -> str:
@@ -16,6 +17,16 @@ def construct_union_class_name(inner_types: T.Sequence[T.Type]) -> str:
     caps_cased_names = "".join(n[0].upper() + n[1:] for n in type_names)
 
     return f"UnionOf{caps_cased_names}"
+
+
+def is_union_type(_type: Type) -> bool:
+    """
+    Check if the given type is a union type
+    """
+    if PYTHON10:
+        return get_origin(_type) is T.Union or get_origin(_type) is UnionType
+    else:
+        return get_origin(_type) is T.Union
 
 
 if sys.version_info < (3, 9):
